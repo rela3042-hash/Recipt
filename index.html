@@ -748,7 +748,10 @@ function todayStr(offsetDays=0){
 }
 function displayDate(iso){
   if(!iso) return '-';
-  const [y,m,d] = iso.split('-');
+  const datePart = String(iso).split('T')[0];
+  const parts = datePart.split('-');
+  if(parts.length !== 3) return String(iso);
+  const [y,m,d] = parts;
   return `${d}/${m}/${y}`;
 }
 
