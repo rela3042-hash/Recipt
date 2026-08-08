@@ -186,9 +186,10 @@
   }
   .item-card .del:hover{background:var(--danger);color:#fff;}
   .item-card .item-name{margin-bottom:8px;}
-  .item-grid-row1{display:grid;grid-template-columns:1fr 1fr 1.2fr;gap:8px;margin-bottom:8px;}
+  .item-grid-row1{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;}
+  .item-grid-size-total{margin-bottom:8px;}
   .item-grid-row2{display:grid;grid-template-columns:1fr 1.2fr 1fr;gap:8px;}
-  .item-grid-row1 label, .item-grid-row2 label{font-size:11px;}
+  .item-grid-row1 label, .item-grid-row2 label, .item-grid-size-total label{font-size:11px;}
 
   .btn{
     width:100%;
@@ -662,9 +663,9 @@
           <tr>
             <th style="width:34px;" class="center" data-i18n="thNo">ລ.</th>
             <th data-i18n="thItem">ລາຍການ</th>
-            <th class="center" style="width:56px;" data-i18n="thWidth">ກວ້າງ</th>
-            <th class="center" style="width:56px;" data-i18n="thHeight">ສູງ</th>
-            <th class="center" style="width:66px;" data-i18n="thArea">ລວມ</th>
+            <th class="center" style="width:50px;" data-i18n="thWidth">ກວ້າງ</th>
+            <th class="center" style="width:50px;" data-i18n="thHeight">ສູງ</th>
+            <th class="center" style="width:60px;" data-i18n="thSizeTotal">ລວມ</th>
             <th class="center" style="width:56px;" data-i18n="thQty">ຈຳນວນ</th>
             <th class="num" style="width:100px;" data-i18n="thPrice">ລາຄາ/ໜ່ວຍ</th>
             <th class="num" style="width:110px;" data-i18n="thLineTotal">ລວມ</th>
@@ -740,14 +741,28 @@ let attachImage = '';
 
 const fmt = n => (Math.round(n*100)/100).toLocaleString('en-US', {minimumFractionDigits:0, maximumFractionDigits:2});
 
+// Any dimension under 1 meter is billed as a full 1 meter minimum
+// (common practice for glass/fabric/tile-style pricing).
+function effectiveDim(v){
+  const n = parseFloat(v);
+  if(!n || n <= 0) return 0;
+  return n < 1 ? 1 : n;
+}
 function calcArea(it){
-  const w = parseFloat(it.width), h = parseFloat(it.height);
+  const w = effectiveDim(it.width), h = effectiveDim(it.height);
   if(w && h) return Math.round(w*h*10000)/10000;
   return 0;
 }
 function formatArea(it){
   const area = calcArea(it);
   return area > 0 ? area.toLocaleString('en-US', {maximumFractionDigits:4}) : '-';
+}
+function formatCombinedSize(it){
+  const w = it.width, h = it.height;
+  if(w && h) return `${w}×${h} = ${formatArea(it)}`;
+  if(w) return `${w}`;
+  if(h) return `${h}`;
+  return '-';
 }
 function calcLineTotal(it){
   const area = calcArea(it);
@@ -785,7 +800,9 @@ function renderItemsForm(){
       <div class="item-grid-row1">
         <div><label>${t('lblWidth')}</label><input type="text" inputmode="decimal" data-field="width" data-idx="${idx}" value="${it.width||''}"></div>
         <div><label>${t('lblHeight')}</label><input type="text" inputmode="decimal" data-field="height" data-idx="${idx}" value="${it.height||''}"></div>
-        <div><label>${t('lblAreaTotal')}</label><input type="text" disabled data-area-idx="${idx}" value="${formatArea(it)}"></div>
+      </div>
+      <div class="item-grid-size-total">
+        <label>${t('thSizeTotal')}</label><input type="text" disabled data-area-idx="${idx}" value="${formatCombinedSize(it)}">
       </div>
       <div class="item-grid-row2">
         <div><label>${t('lblQty')}</label><input type="text" inputmode="decimal" data-field="qty" data-idx="${idx}" value="${it.qty}"></div>
@@ -861,15 +878,17 @@ document.getElementById('itemsList').addEventListener('input', (e) => {
   if(idx === null || !field) return;
 
   if(field === 'name'){
-    items[idx].name = e.target.value;
+    items[idx][field] = e.target.value;
     updatePreview();
     return;
   }
 
   if(['width','height','qty','price'].includes(field)){
-    // Allow only digits and a single decimal point while typing, so partial
-    // values like "0." or "1." aren't rejected mid-entry.
-    let clean = e.target.value.replace(/[^0-9.]/g, '');
+    // Allow only digits and a single decimal separator while typing, so
+    // partial values like "0." aren't rejected mid-entry. Some mobile
+    // numeric keypads use "," as the decimal separator depending on locale,
+    // so accept it too and normalize to ".".
+    let clean = e.target.value.replace(/,/g, '.').replace(/[^0-9.]/g, '');
     const firstDot = clean.indexOf('.');
     if(firstDot !== -1){
       clean = clean.slice(0, firstDot+1) + clean.slice(firstDot+1).replace(/\./g, '');
@@ -877,14 +896,14 @@ document.getElementById('itemsList').addEventListener('input', (e) => {
     if(clean !== e.target.value){
       const pos = e.target.selectionStart - (e.target.value.length - clean.length);
       e.target.value = clean;
-      e.target.setSelectionRange(pos, pos);
+      try{ e.target.setSelectionRange(pos, pos); }catch(err){}
     }
     items[idx][field] = clean;
 
     // Update only this card's computed read-only outputs, without rebuilding
     // the list (rebuilding would reset the field being typed into).
     const areaOut = document.querySelector(`[data-area-idx="${idx}"]`);
-    if(areaOut) areaOut.value = formatArea(items[idx]);
+    if(areaOut) areaOut.value = formatCombinedSize(items[idx]);
     const totalOut = document.querySelector(`[data-total-idx="${idx}"]`);
     if(totalOut) totalOut.value = fmt(calcLineTotal(items[idx]));
 
@@ -1093,9 +1112,9 @@ const translations = {
   signLine: {lo:'ລາຍເຊັນ ແລະ ວັນທີ', zh:'签名及日期'},
   thNo: {lo:'ລ.', zh:'序号'},
   thItem: {lo:'ລາຍການ', zh:'项目'},
+  thSizeTotal: {lo:'ລວມ', zh:'合计'},
   thWidth: {lo:'ກວ້າງ', zh:'宽'},
   thHeight: {lo:'ສູງ', zh:'高'},
-  thArea: {lo:'ລວມ', zh:'合计'},
   thQty: {lo:'ຈຳນວນ', zh:'数量'},
   thPrice: {lo:'ລາຄາ/ໜ່ວຍ', zh:'单价'},
   thLineTotal: {lo:'ລວມ', zh:'小计'},
@@ -1111,7 +1130,6 @@ const translations = {
   reportEmptyMsg: {lo:'ຍັງບໍ່ມີຂໍ້ມູນ — ກົດ "ໂຫລດຂໍ້ມູນ" ຫຼັງຈາກຕັ້ງຄ່າ Web App URL ແລ້ວ', zh:'暂无数据 — 设置 Web App URL 后点击"加载数据"'},
   lblWidth: {lo:'ກວ້າງ', zh:'宽'},
   lblHeight: {lo:'ສູງ', zh:'高'},
-  lblAreaTotal: {lo:'ລວມ', zh:'合计'},
   lblQty: {lo:'ຈຳນວນ', zh:'数量'},
   lblPrice: {lo:'ລາຄາ/ໜ່ວຍ', zh:'单价'},
   lblLineTotal: {lo:'ລວມ', zh:'小计'},
